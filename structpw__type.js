@@ -1,0 +1,26 @@
+var structpw__type =
+[
+    [ "pw_type_init", "structpw__type.html#a4f12877886f908c4851fced2989cd599", null ],
+    [ "client", "structpw__type.html#a284198212cb50b49032e51176e9472a6", null ],
+    [ "command_node", "structpw__type.html#a4119164e6e3ac21df60c07f66dec6c34", null ],
+    [ "core", "structpw__type.html#a68301ad44a80c4f4efe3bad2a0dc67fa", null ],
+    [ "data", "structpw__type.html#a88875940d099f4adf1e9dbc54d11bcb1", null ],
+    [ "event_node", "structpw__type.html#a6a8c1169b167637275cd235d630646a2", null ],
+    [ "link", "structpw__type.html#a97ccbe78aa2f4226c81284b125ceddaa", null ],
+    [ "map", "structpw__type.html#a7109bf8a7d9f16d2e41ed08b071ccfef", null ],
+    [ "meta", "structpw__type.html#a9131ab61dffbafb259592177dfc02b6a", null ],
+    [ "module", "structpw__type.html#a46916e5f2540c3ce8014a5a5f16585d6", null ],
+    [ "monitor", "structpw__type.html#a0fff65a22e339c4fe1d28497eaf1f1fc", null ],
+    [ "node", "structpw__type.html#a5ac6e863d7283b4e029c7fff038f6d68", null ],
+    [ "node_factory", "structpw__type.html#ad47ba1ad7b8022097cd96036e8c24592", null ],
+    [ "param_alloc_buffers", "structpw__type.html#a6e49992c729c260114c413eb0bb3f05f", null ],
+    [ "param_alloc_meta_enable", "structpw__type.html#a342d99074110e6beb6d203bd87a569c5", null ],
+    [ "param_alloc_video_padding", "structpw__type.html#adefcfcca780b995611cd1b5f642f3299", null ],
+    [ "registry", "structpw__type.html#a96702159020e2a32ce18b035d3b74837", null ],
+    [ "spa_clock", "structpw__type.html#ac313745c3441735948189caa564c9272", null ],
+    [ "spa_format", "structpw__type.html#a8db1c1925ca5762de26a85510854198d", null ],
+    [ "spa_log", "structpw__type.html#acd7b9b19e4a1e0456598c4bd812d3a98", null ],
+    [ "spa_monitor", "structpw__type.html#a1bae8cb01004eb39d3e4140b44f96f1c", null ],
+    [ "spa_node", "structpw__type.html#a369f03d5a6b0220bb175e2d7190d307e", null ],
+    [ "spa_props", "structpw__type.html#ac0f887daca6f0e510bb649e40bacddfb", null ]
+];

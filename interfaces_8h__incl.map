@@ -1,0 +1,18 @@
+<map id="interfaces.h" name="interfaces.h">
+<area shape="rect" id="node7" href="$introspect_8h.html" title="pipewire/introspect.h" alt="" coords="1434,453,1577,480"/>
+<area shape="rect" id="node10" href="$proxy_8h.html" title="pipewire/proxy.h" alt="" coords="1168,80,1285,107"/>
+<area shape="rect" id="node8" href="$properties_8h.html" title="pipewire/properties.h" alt="" coords="870,528,1013,555"/>
+<area shape="rect" id="node12" href="$protocol_8h.html" title="pipewire/protocol.h" alt="" coords="776,155,907,181"/>
+<area shape="rect" id="node14" href="$core_8h.html" title="pipewire/core.h" alt="" coords="1623,229,1734,256"/>
+<area shape="rect" id="node33" href="$utils_8h.html" title="pipewire/utils.h" alt="" coords="167,229,276,256"/>
+<area shape="rect" id="node15" href="$client_8h.html" title="pipewire/client.h" alt="" coords="1614,379,1730,405"/>
+<area shape="rect" id="node17" href="$global_8h.html" title="pipewire/global.h" alt="" coords="1985,453,2103,480"/>
+<area shape="rect" id="node19" href="$loop_8h.html" title="pipewire/loop.h" alt="" coords="512,304,621,331"/>
+<area shape="rect" id="node21" href="$node-factory_8h.html" title="pipewire/node&#45;factory.h" alt="" coords="1664,304,1821,331"/>
+<area shape="rect" id="node22" href="$port_8h.html" title="pipewire/port.h" alt="" coords="1896,304,2003,331"/>
+<area shape="rect" id="node25" href="$type_8h.html" title="pipewire/type.h" alt="" coords="933,304,1043,331"/>
+<area shape="rect" id="node18" href="$resource_8h.html" title="pipewire/resource.h" alt="" coords="1826,453,1961,480"/>
+<area shape="rect" id="node24" href="$node_8h.html" title="pipewire/node.h" alt="" coords="1857,379,1970,405"/>
+<area shape="rect" id="node30" href="$map_8h.html" title="pipewire/map.h" alt="" coords="214,379,325,405"/>
+<area shape="rect" id="node32" href="$array_8h.html" title="pipewire/array.h" alt="" coords="93,453,208,480"/>
+</map>

@@ -1,0 +1,21 @@
+<map id="interfaces.h" name="interfaces.h">
+<area shape="rect" id="node2" href="$pipewire_8h.html" title="pipewire.h" alt="" coords="710,80,791,107"/>
+<area shape="rect" id="node3" href="$client_8c.html" title="client.c" alt="" coords="5,155,69,181"/>
+<area shape="rect" id="node5" href="$core_8c.html" title="core.c" alt="" coords="93,155,152,181"/>
+<area shape="rect" id="node8" href="$link_8c.html" title="link.c" alt="" coords="176,155,229,181"/>
+<area shape="rect" id="node10" href="$module_8c.html" title="module.c" alt="" coords="253,155,328,181"/>
+<area shape="rect" id="node11" href="$node_8c.html" title="node.c" alt="" coords="1388,155,1449,181"/>
+<area shape="rect" id="node16" href="$remote_8c.html" title="remote.c" alt="" coords="1474,155,1547,181"/>
+<area shape="rect" id="node17" href="$stream_8c.html" title="stream.c" alt="" coords="1571,155,1645,181"/>
+<area shape="rect" id="node20" href="$resource_8c.html" title="resource.c" alt="" coords="968,80,1051,107"/>
+<area shape="rect" id="node4" href="$command_8c.html" title="command.c" alt="" coords="1273,155,1364,181"/>
+<area shape="rect" id="node6" href="$global_8c.html" title="global.c" alt="" coords="352,155,419,181"/>
+<area shape="rect" id="node7" href="$introspect_8c.html" title="introspect.c" alt="" coords="443,155,533,181"/>
+<area shape="rect" id="node9" href="$loop_8c.html" title="loop.c" alt="" coords="558,155,615,181"/>
+<area shape="rect" id="node12" href="$node-factory_8c.html" title="node&#45;factory.c" alt="" coords="639,155,745,181"/>
+<area shape="rect" id="node13" href="$pipewire_8c.html" title="pipewire.c" alt="" coords="769,155,850,181"/>
+<area shape="rect" id="node14" href="$port_8c.html" title="port.c" alt="" coords="874,155,929,181"/>
+<area shape="rect" id="node15" href="$properties_8c.html" title="properties.c" alt="" coords="953,155,1044,181"/>
+<area shape="rect" id="node18" href="$thread-loop_8c.html" title="thread&#45;loop.c" alt="" coords="1069,155,1166,181"/>
+<area shape="rect" id="node19" href="$type_8c.html" title="type.c" alt="" coords="1191,155,1249,181"/>
+</map>

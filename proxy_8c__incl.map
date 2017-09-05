@@ -1,0 +1,20 @@
+<map id="proxy.c" name="proxy.c">
+<area shape="rect" id="node2" href="$log_8h.html" title="pipewire/log.h" alt="" coords="87,80,190,107"/>
+<area shape="rect" id="node5" href="$proxy_8h.html" title="pipewire/proxy.h" alt="" coords="1840,155,1957,181"/>
+<area shape="rect" id="node9" href="$core_8h.html" title="pipewire/core.h" alt="" coords="1697,304,1807,331"/>
+<area shape="rect" id="node37" href="$remote_8h.html" title="pipewire/remote.h" alt="" coords="1712,80,1837,107"/>
+<area shape="rect" id="node7" href="$protocol_8h.html" title="pipewire/protocol.h" alt="" coords="729,229,860,256"/>
+<area shape="rect" id="node16" href="$properties_8h.html" title="pipewire/properties.h" alt="" coords="1201,603,1343,629"/>
+<area shape="rect" id="node35" href="$utils_8h.html" title="pipewire/utils.h" alt="" coords="248,304,357,331"/>
+<area shape="rect" id="node11" href="$client_8h.html" title="pipewire/client.h" alt="" coords="1569,453,1685,480"/>
+<area shape="rect" id="node13" href="$global_8h.html" title="pipewire/global.h" alt="" coords="1959,528,2078,555"/>
+<area shape="rect" id="node14" href="$introspect_8h.html" title="pipewire/introspect.h" alt="" coords="1409,528,1551,555"/>
+<area shape="rect" id="node19" href="$loop_8h.html" title="pipewire/loop.h" alt="" coords="1296,379,1405,405"/>
+<area shape="rect" id="node21" href="$node-factory_8h.html" title="pipewire/node&#45;factory.h" alt="" coords="1673,379,1831,405"/>
+<area shape="rect" id="node22" href="$port_8h.html" title="pipewire/port.h" alt="" coords="1905,379,2012,405"/>
+<area shape="rect" id="node26" href="$type_8h.html" title="pipewire/type.h" alt="" coords="822,379,933,405"/>
+<area shape="rect" id="node18" href="$resource_8h.html" title="pipewire/resource.h" alt="" coords="1801,528,1935,555"/>
+<area shape="rect" id="node25" href="$node_8h.html" title="pipewire/node.h" alt="" coords="1811,453,1925,480"/>
+<area shape="rect" id="node32" href="$map_8h.html" title="pipewire/map.h" alt="" coords="207,453,318,480"/>
+<area shape="rect" id="node34" href="$array_8h.html" title="pipewire/array.h" alt="" coords="99,528,213,555"/>
+</map>

@@ -1,0 +1,29 @@
+<map id="utils.h" name="utils.h">
+<area shape="rect" id="node2" href="$pipewire_8h.html" title="pipewire.h" alt="" coords="797,379,878,405"/>
+<area shape="rect" id="node4" href="$command_8c.html" title="command.c" alt="" coords="1556,453,1647,480"/>
+<area shape="rect" id="node10" href="$module_8c.html" title="module.c" alt="" coords="5,453,80,480"/>
+<area shape="rect" id="node17" href="$stream_8c.html" title="stream.c" alt="" coords="1361,453,1434,480"/>
+<area shape="rect" id="node20" href="$protocol_8h.html" title="protocol.h" alt="" coords="693,80,771,107"/>
+<area shape="rect" id="node28" href="$utils_8c.html" title="utils.c" alt="" coords="1413,80,1470,107"/>
+<area shape="rect" id="node3" href="$client_8c.html" title="client.c" alt="" coords="267,453,331,480"/>
+<area shape="rect" id="node5" href="$core_8c.html" title="core.c" alt="" coords="355,453,413,480"/>
+<area shape="rect" id="node6" href="$global_8c.html" title="global.c" alt="" coords="943,453,1009,480"/>
+<area shape="rect" id="node7" href="$introspect_8c.html" title="introspect.c" alt="" coords="1245,453,1336,480"/>
+<area shape="rect" id="node8" href="$link_8c.html" title="link.c" alt="" coords="104,453,157,480"/>
+<area shape="rect" id="node9" href="$loop_8c.html" title="loop.c" alt="" coords="1034,453,1091,480"/>
+<area shape="rect" id="node11" href="$node_8c.html" title="node.c" alt="" coords="181,453,243,480"/>
+<area shape="rect" id="node12" href="$node-factory_8c.html" title="node&#45;factory.c" alt="" coords="1115,453,1221,480"/>
+<area shape="rect" id="node13" href="$pipewire_8c.html" title="pipewire.c" alt="" coords="438,453,519,480"/>
+<area shape="rect" id="node14" href="$port_8c.html" title="port.c" alt="" coords="543,453,598,480"/>
+<area shape="rect" id="node15" href="$properties_8c.html" title="properties.c" alt="" coords="623,453,713,480"/>
+<area shape="rect" id="node16" href="$remote_8c.html" title="remote.c" alt="" coords="1458,453,1531,480"/>
+<area shape="rect" id="node18" href="$thread-loop_8c.html" title="thread&#45;loop.c" alt="" coords="738,453,835,480"/>
+<area shape="rect" id="node19" href="$type_8c.html" title="type.c" alt="" coords="860,453,919,480"/>
+<area shape="rect" id="node21" href="$proxy_8h.html" title="proxy.h" alt="" coords="735,155,801,181"/>
+<area shape="rect" id="node23" href="$resource_8c.html" title="resource.c" alt="" coords="308,379,391,405"/>
+<area shape="rect" id="node24" href="$remote_8h.html" title="remote.h" alt="" coords="858,229,931,256"/>
+<area shape="rect" id="node27" href="$protocol_8c.html" title="protocol.c" alt="" coords="581,155,659,181"/>
+<area shape="rect" id="node22" href="$interfaces_8h.html" title="interfaces.h" alt="" coords="552,304,643,331"/>
+<area shape="rect" id="node26" href="$proxy_8c.html" title="proxy.c" alt="" coords="795,304,861,331"/>
+<area shape="rect" id="node25" href="$stream_8h.html" title="stream.h" alt="" coords="1085,304,1158,331"/>
+</map>
