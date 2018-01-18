@@ -61,8 +61,6 @@ struct buffer {
 };
 
 struct port {
-	bool have_format;
-
 	struct spa_port_info info;
 
 	struct buffer buffers[MAX_BUFFERS];
@@ -134,8 +132,6 @@ struct impl {
 
 	struct port in_ports[1];
 	struct port out_ports[1];
-
-	bool started;
 };
 
 #define CHECK_IN_PORT(this,d,p)  ((d) == SPA_DIRECTION_INPUT && (p) == 0)
@@ -259,10 +255,7 @@ static int impl_node_send_command(struct spa_node *node, const struct spa_comman
 
 	this = SPA_CONTAINER_OF(node, struct impl, node);
 
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
-		this->started = true;
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		this->started = false;
+	if (SPA_COMMAND_TYPE(command) == this->type.command_node.State) {
 	} else
 		return -ENOTSUP;
 
@@ -399,7 +392,7 @@ static int port_get_format(struct spa_node *node,
 
 	port = GET_PORT(this, direction, port_id);
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 	if (*index > 0)
 		return 0;
@@ -468,7 +461,7 @@ impl_node_port_enum_params(struct spa_node *node,
 			return res;
 	}
 	else if (id == t->param.idBuffers) {
-		if (!port->have_format)
+		if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 		if (*index > 0)
 			return 0;
@@ -536,6 +529,7 @@ static int clear_buffers(struct impl *this, struct port *port)
 		spa_log_info(this->log, NAME " %p: clear buffers", this);
 		port->n_buffers = 0;
 		spa_list_init(&port->empty);
+		SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 	}
 	return 0;
 }
@@ -551,7 +545,7 @@ static int port_set_format(struct spa_node *node,
 	port = GET_PORT(this, direction, port_id);
 
 	if (format == NULL) {
-		port->have_format = false;
+		SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 		clear_buffers(this, port);
 	} else {
 		struct spa_audio_info info = { 0 };
@@ -569,7 +563,7 @@ static int port_set_format(struct spa_node *node,
 
 		this->bpf = 2 * info.info.raw.channels;
 		this->current_format = info;
-		port->have_format = true;
+		SPA_FLAG_SET(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 	}
 
 	return 0;
@@ -617,7 +611,7 @@ impl_node_port_use_buffers(struct spa_node *node,
 
 	port = GET_PORT(this, direction, port_id);
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	clear_buffers(this, port);
@@ -645,6 +639,9 @@ impl_node_port_use_buffers(struct spa_node *node,
 			spa_list_append(&port->empty, &b->link);
 	}
 	port->n_buffers = n_buffers;
+
+	if (n_buffers > 0)
+		SPA_FLAG_SET(port->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 
 	return 0;
 }

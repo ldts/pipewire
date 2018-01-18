@@ -47,7 +47,7 @@ struct resource_data {
 
 /** \endcond */
 
-static int pause_node(struct pw_node *this)
+static int deactivate_node(struct pw_node *this)
 {
 	int res = 0;
 
@@ -55,23 +55,25 @@ static int pause_node(struct pw_node *this)
 		return 0;
 
 	pw_log_debug("node %p: pause node", this);
-	res = spa_node_send_command(this->node,
-				    &SPA_COMMAND_INIT(this->core->type.command_node.Pause));
+	res = spa_node_send_command(this->node, (struct spa_command *)
+		    &SPA_COMMAND_NODE_STATE_INIT(this->core->type.command_node.State,
+						 SPA_COMMAND_NODE_STATE_IDLE));
 	if (res < 0)
-		pw_log_debug("node %p: pause node error %s", this, spa_strerror(res));
+		pw_log_debug("node %p: deactivate node error %s", this, spa_strerror(res));
 
 	return res;
 }
 
-static int start_node(struct pw_node *this)
+static int activate_node(struct pw_node *this)
 {
 	int res = 0;
 
 	pw_log_debug("node %p: start node", this);
-	res = spa_node_send_command(this->node,
-				    &SPA_COMMAND_INIT(this->core->type.command_node.Start));
+	res = spa_node_send_command(this->node, (struct spa_command *)
+		    &SPA_COMMAND_NODE_STATE_INIT(this->core->type.command_node.State,
+						 SPA_COMMAND_NODE_STATE_ACTIVE));
 	if (res < 0)
-		pw_log_debug("node %p: start node error %s", this, spa_strerror(res));
+		pw_log_debug("node %p: activate node error %s", this, spa_strerror(res));
 
 	return res;
 }
@@ -86,15 +88,11 @@ static int suspend_node(struct pw_node *this)
 	spa_list_for_each(p, &this->input_ports, link) {
 		if ((res = pw_port_set_param(p, this->core->type.param.idFormat, 0, NULL)) < 0)
 			pw_log_warn("error unset format input: %s", spa_strerror(res));
-		/* force CONFIGURE in case of async */
-		p->state = PW_PORT_STATE_CONFIGURE;
 	}
 
 	spa_list_for_each(p, &this->output_ports, link) {
 		if ((res = pw_port_set_param(p, this->core->type.param.idFormat, 0, NULL)) < 0)
 			pw_log_warn("error unset format output: %s", spa_strerror(res));
-		/* force CONFIGURE in case of async */
-		p->state = PW_PORT_STATE_CONFIGURE;
 	}
 	return res;
 }
@@ -546,7 +544,7 @@ do_node_remove(struct spa_loop *loop,
 {
 	struct pw_node *this = user_data;
 
-	pause_node(this);
+	deactivate_node(this);
 
 	spa_graph_node_remove(&this->rt.node);
 
@@ -790,14 +788,14 @@ int pw_node_set_state(struct pw_node *node, enum pw_node_state state)
 
 	case PW_NODE_STATE_IDLE:
 		if (!node->active)
-			res = pause_node(node);
+			res = deactivate_node(node);
 		break;
 
 	case PW_NODE_STATE_RUNNING:
 		if (node->active) {
 			node_activate(node);
 			send_clock_update(node);
-			res = start_node(node);
+			res = activate_node(node);
 		}
 		break;
 

@@ -127,7 +127,6 @@ struct port {
 	struct v4l2_frmsizeenum frmsize;
 	struct v4l2_frmivalenum frmival;
 
-	bool have_format;
 	struct spa_video_info current_format;
 
 	int fd;
@@ -290,136 +289,57 @@ static int impl_node_set_param(struct spa_node *node,
 	return 0;
 }
 
-static int do_pause_done(struct spa_loop *loop,
-			 bool async,
-			 uint32_t seq,
-			 const void *data,
-			 size_t size,
-			 void *user_data)
-{
-	struct impl *this = user_data;
-	int res = *(int*)data;
-
-	if (SPA_RESULT_IS_OK(res))
-		res = spa_v4l2_stream_off(this);
-
-	this->callbacks->done(this->callbacks_data, seq, res);
-
-	return 0;
-}
-
-static int do_pause(struct spa_loop *loop,
-		    bool async,
-		    uint32_t seq,
-		    const void *data,
-		    size_t size,
-		    void *user_data)
-{
-	struct impl *this = user_data;
-	int res;
-	const struct spa_command *cmd = data;
-
-	res = spa_node_port_send_command(&this->node, SPA_DIRECTION_OUTPUT, 0, cmd);
-
-	if (async) {
-		spa_loop_invoke(this->out_ports[0].main_loop,
-				do_pause_done,
-				seq,
-				&res,
-				sizeof(res),
-				false,
-				this);
-	}
-	return res;
-}
-
-static int do_start_done(struct spa_loop *loop,
-			 bool async,
-			 uint32_t seq,
-			 const void *data,
-			 size_t size,
-			 void *user_data)
-{
-	struct impl *this = user_data;
-	int res = *(int*)data;
-
-	this->callbacks->done(this->callbacks_data, seq, res);
-
-	return 0;
-}
-
-static int do_start(struct spa_loop *loop,
-		    bool async,
-		    uint32_t seq,
-		    const void *data,
-		    size_t size,
-		    void *user_data)
-{
-	struct impl *this = user_data;
-	int res;
-	const struct spa_command *cmd = data;
-
-	res = spa_node_port_send_command(&this->node, SPA_DIRECTION_OUTPUT, 0, cmd);
-
-	if (async) {
-		spa_loop_invoke(this->out_ports[0].main_loop,
-				do_start_done,
-				seq,
-				&res,
-				sizeof(res),
-				false,
-				this);
-	}
-	return 0;
-}
-
 static int impl_node_send_command(struct spa_node *node, const struct spa_command *command)
 {
 	struct impl *this;
+	struct port *port;
+	int res;
 
 	spa_return_val_if_fail(node != NULL, -EINVAL);
 	spa_return_val_if_fail(command != NULL, -EINVAL);
 
 	this = SPA_CONTAINER_OF(node, struct impl, node);
+	port  = &this->out_ports[0];
 
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
-		struct port *port = &this->out_ports[0];
-		int res;
+	if (SPA_COMMAND_TYPE(command) == this->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
 
-		if (!port->have_format)
-			return -EIO;
-		if (port->n_buffers == 0)
-			return -EIO;
-
-		if ((res = spa_v4l2_stream_on(this)) < 0)
-			return res;
-
-		return spa_loop_invoke(this->out_ports[0].data_loop,
-				       do_start,
-				       ++this->seq,
-				       command,
-				       SPA_POD_SIZE(command),
-				       false,
-				       this);
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		struct port *port = &this->out_ports[0];
-
-		if (!port->have_format)
-			return -EIO;
-		if (port->n_buffers == 0)
-			return -EIO;
-
-		return spa_loop_invoke(this->out_ports[0].data_loop,
-				       do_pause,
-				       ++this->seq,
-				       command,
-				       SPA_POD_SIZE(command),
-				       false,
-				       this);
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+			if ((res = spa_v4l2_stream_off(this)) < 0)
+				return res;
+			SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_ACTIVE);
+			if ((res = spa_v4l2_close(this)) < 0)
+				return res;
+			break;
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			if ((res = spa_v4l2_open(this)) < 0)
+				return res;
+			if ((res = spa_v4l2_stream_off(this)) < 0)
+				return res;
+			SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_ACTIVE);
+			break;
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			if ((res = spa_v4l2_open(this)) < 0)
+				return res;
+			if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
+				return -EIO;
+			if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS))
+				return -EIO;
+			if ((res = spa_v4l2_stream_on(this)) < 0)
+				return res;
+			SPA_FLAG_SET(port->info.state, SPA_PORT_INFO_STATE_ACTIVE);
+			break;
+		default:
+			res = -ENOTSUP;
+			break;
+		}
 	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.ClockUpdate) {
 		return 0;
 	} else
 		return -ENOTSUP;
+
+	return 0;
 }
 
 static int impl_node_set_callbacks(struct spa_node *node,
@@ -518,7 +438,7 @@ static int port_get_format(struct spa_node *node,
 	struct type *t = &this->type;
 	struct port *port = &this->out_ports[port_id];
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 	if (*index > 0)
 		return 0;
@@ -603,7 +523,7 @@ static int impl_node_port_enum_params(struct spa_node *node,
 			return res;
 	}
 	else if (id == t->param.idBuffers) {
-		if (!port->have_format)
+		if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 		if (*index > 0)
 			return 0;
@@ -651,12 +571,15 @@ static int port_set_format(struct spa_node *node,
 	struct spa_video_info info;
 	struct type *t = &this->type;
 	struct port *port = &this->out_ports[port_id];
+	bool have_format;
+
+	have_format = SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 
 	if (format == NULL) {
 		spa_v4l2_stream_off(this);
 		spa_v4l2_clear_buffers(this);
 		spa_v4l2_close(this);
-		port->have_format = false;
+		SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 		return 0;
 	} else {
 		spa_pod_object_parse(format,
@@ -668,13 +591,14 @@ static int port_set_format(struct spa_node *node,
 			return -EINVAL;
 		}
 
+
 		if (info.media_subtype == t->media_subtype.raw) {
 			if (spa_format_video_raw_parse(format, &info.info.raw, &t->format_video) < 0) {
 				spa_log_error(this->log, "can't parse video raw");
 				return -EINVAL;
 			}
 
-			if (port->have_format && info.media_type == port->current_format.media_type &&
+			if (have_format && info.media_type == port->current_format.media_type &&
 			    info.media_subtype == port->current_format.media_subtype &&
 			    info.info.raw.format == port->current_format.info.raw.format &&
 			    info.info.raw.size.width == port->current_format.info.raw.size.width &&
@@ -684,7 +608,7 @@ static int port_set_format(struct spa_node *node,
 			if (spa_format_video_mjpg_parse(format, &info.info.mjpg, &t->format_video) < 0)
 				return -EINVAL;
 
-			if (port->have_format && info.media_type == port->current_format.media_type &&
+			if (have_format && info.media_type == port->current_format.media_type &&
 			    info.media_subtype == port->current_format.media_subtype &&
 			    info.info.mjpg.size.width == port->current_format.info.mjpg.size.width &&
 			    info.info.mjpg.size.height == port->current_format.info.mjpg.size.height)
@@ -693,7 +617,7 @@ static int port_set_format(struct spa_node *node,
 			if (spa_format_video_h264_parse(format, &info.info.h264, &t->format_video) < 0)
 				return -EINVAL;
 
-			if (port->have_format && info.media_type == port->current_format.media_type &&
+			if (have_format && info.media_type == port->current_format.media_type &&
 			    info.media_subtype == port->current_format.media_subtype &&
 			    info.info.h264.size.width == port->current_format.info.h264.size.width &&
 			    info.info.h264.size.height == port->current_format.info.h264.size.height)
@@ -701,9 +625,9 @@ static int port_set_format(struct spa_node *node,
 		}
 	}
 
-	if (port->have_format && !(flags & SPA_NODE_PARAM_FLAG_TEST_ONLY)) {
+	if (have_format && !(flags & SPA_NODE_PARAM_FLAG_TEST_ONLY)) {
 		spa_v4l2_use_buffers(this, NULL, 0);
-		port->have_format = false;
+		SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 	}
 
 	if (spa_v4l2_set_format(this, &info, flags & SPA_NODE_PARAM_FLAG_TEST_ONLY) < 0)
@@ -711,7 +635,7 @@ static int port_set_format(struct spa_node *node,
 
 	if (!(flags & SPA_NODE_PARAM_FLAG_TEST_ONLY)) {
 		port->current_format = info;
-		port->have_format = true;
+		SPA_FLAG_SET(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 	}
 
 	return 0;
@@ -757,7 +681,7 @@ static int impl_node_port_use_buffers(struct spa_node *node,
 
 	port = &this->out_ports[port_id];
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	if (port->n_buffers) {
@@ -794,7 +718,7 @@ impl_node_port_alloc_buffers(struct spa_node *node,
 
 	port = &this->out_ports[port_id];
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	res = spa_v4l2_alloc_buffers(this, params, n_params, buffers, n_buffers);
@@ -852,23 +776,8 @@ static int impl_node_port_send_command(struct spa_node *node,
 				       uint32_t port_id,
 				       const struct spa_command *command)
 {
-	struct impl *this;
-	int res;
-
 	spa_return_val_if_fail(node != NULL, -EINVAL);
-
-	this = SPA_CONTAINER_OF(node, struct impl, node);
-
-	spa_return_val_if_fail(CHECK_PORT(this, direction, port_id), -EINVAL);
-
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		res = spa_v4l2_port_set_enabled(this, false);
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
-		res = spa_v4l2_port_set_enabled(this, true);
-	} else
-		res = -ENOTSUP;
-
-	return res;
+	return -ENOTSUP;
 }
 
 static int impl_node_process_input(struct spa_node *node)

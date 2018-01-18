@@ -137,7 +137,6 @@ struct impl {
 	struct spa_port_info info;
 	struct spa_io_buffers *io;
 
-	bool have_format;
 	struct spa_video_info current_format;
 	size_t bpp;
 	int stride;
@@ -145,7 +144,7 @@ struct impl {
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
 
-	bool started;
+	bool active;
 	uint64_t start_time;
 	uint64_t elapsed_time;
 
@@ -370,38 +369,40 @@ static int impl_node_send_command(struct spa_node *node, const struct spa_comman
 
 	this = SPA_CONTAINER_OF(node, struct impl, node);
 
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
+	if (SPA_COMMAND_TYPE(command) == this->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
 		struct timespec now;
 
-		if (!this->have_format)
-			return -EIO;
-		if (this->n_buffers == 0)
-			return -EIO;
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			if (!this->active)
+				return 0;
+			this->active = false;
+			set_timer(this, false);
+			break;
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
+				return -EIO;
+			if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS))
+				return -EIO;
+			if (this->active)
+				return 0;
 
-		if (this->started)
-			return 0;
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			if (this->props.live)
+				this->start_time = SPA_TIMESPEC_TO_TIME(&now);
+			else
+				this->start_time = 0;
+			this->frame_count = 0;
+			this->elapsed_time = 0;
 
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		if (this->props.live)
-			this->start_time = SPA_TIMESPEC_TO_TIME(&now);
-		else
-			this->start_time = 0;
-		this->frame_count = 0;
-		this->elapsed_time = 0;
-
-		this->started = true;
-		set_timer(this, true);
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		if (!this->have_format)
-			return -EIO;
-		if (this->n_buffers == 0)
-			return -EIO;
-
-		if (!this->started)
-			return 0;
-
-		this->started = false;
-		set_timer(this, false);
+			this->active = true;
+			set_timer(this, true);
+			break;
+		default:
+			return -ENOTSUP;
+		}
 	} else
 		return -ENOTSUP;
 
@@ -534,7 +535,7 @@ static int port_get_format(struct spa_node *node,
 	struct impl *this = SPA_CONTAINER_OF(node, struct impl, node);
 	struct type *t = &this->type;
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 	if (*index > 0)
 		return 0;
@@ -600,7 +601,7 @@ impl_node_port_enum_params(struct spa_node *node,
 	else if (id == t->param.idBuffers) {
 		struct spa_video_info_raw *raw_info = &this->current_format.info.raw;
 
-		if (!this->have_format)
+		if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 		if (*index > 0)
 			return 0;
@@ -614,7 +615,7 @@ impl_node_port_enum_params(struct spa_node *node,
 			":", t->param_buffers.align,   "i", 16);
 	}
 	else if (id == t->param.idMeta) {
-		if (!this->have_format)
+		if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 
 		switch (*index) {
@@ -646,8 +647,9 @@ static int clear_buffers(struct impl *this)
 		spa_log_info(this->log, NAME " %p: clear buffers", this);
 		this->n_buffers = 0;
 		spa_list_init(&this->empty);
-		this->started = false;
+		this->active = false;
 		set_timer(this, false);
+		SPA_FLAG_CLEAR(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 	}
 	return 0;
 }
@@ -660,7 +662,7 @@ static int port_set_format(struct spa_node *node,
 	struct impl *this = SPA_CONTAINER_OF(node, struct impl, node);
 
 	if (format == NULL) {
-		this->have_format = false;
+		SPA_FLAG_CLEAR(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 		clear_buffers(this);
 	} else {
 		struct spa_video_info info = { 0 };
@@ -684,10 +686,10 @@ static int port_set_format(struct spa_node *node,
 			return -EINVAL;
 
 		this->current_format = info;
-		this->have_format = true;
+		SPA_FLAG_SET(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 	}
 
-	if (this->have_format) {
+	if (SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT)) {
 		struct spa_video_info_raw *raw_info = &this->current_format.info.raw;
 		this->stride = SPA_ROUND_UP_N(this->bpp * raw_info->size.width, 4);
 	}
@@ -734,7 +736,7 @@ impl_node_port_use_buffers(struct spa_node *node,
 
 	spa_return_val_if_fail(CHECK_PORT(this, direction, port_id), -EINVAL);
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	clear_buffers(this);
@@ -759,6 +761,9 @@ impl_node_port_use_buffers(struct spa_node *node,
 	}
 	this->n_buffers = n_buffers;
 
+	if (n_buffers > 0)
+		SPA_FLAG_SET(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
+
 	return 0;
 }
 
@@ -779,7 +784,7 @@ impl_node_port_alloc_buffers(struct spa_node *node,
 
 	spa_return_val_if_fail(CHECK_PORT(this, direction, port_id), -EINVAL);
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	return -ENOTSUP;

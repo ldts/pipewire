@@ -156,10 +156,10 @@ static int select_configuration_sbc(struct spa_bt_monitor *monitor, void *capabi
 	cap = capabilities;
 	conf = *cap;
 
-	if (conf.frequency & SBC_SAMPLING_FREQ_48000)
-		conf.frequency = SBC_SAMPLING_FREQ_48000;
-	else if (conf.frequency & SBC_SAMPLING_FREQ_44100)
+	if (conf.frequency & SBC_SAMPLING_FREQ_44100)
 		conf.frequency = SBC_SAMPLING_FREQ_44100;
+	else if (conf.frequency & SBC_SAMPLING_FREQ_48000)
+		conf.frequency = SBC_SAMPLING_FREQ_48000;
 	else if (conf.frequency & SBC_SAMPLING_FREQ_32000)
 		conf.frequency = SBC_SAMPLING_FREQ_32000;
 	else if (conf.frequency & SBC_SAMPLING_FREQ_16000)

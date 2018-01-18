@@ -495,10 +495,12 @@ static void run_graph(struct data *data)
 	int64_t start, stop;
 
 	{
-		struct spa_command cmd = SPA_COMMAND_INIT(data->type.command_node.Start);
-		if ((res = spa_node_send_command(data->source, &cmd)) < 0)
+		struct spa_command *cmd = (struct spa_command *)
+			&SPA_COMMAND_NODE_STATE_INIT(data->type.command_node.State,
+						    SPA_COMMAND_NODE_STATE_ACTIVE);
+		if ((res = spa_node_send_command(data->source, cmd)) < 0)
 			printf("got source error %d\n", res);
-		if ((res = spa_node_send_command(data->sink, &cmd)) < 0)
+		if ((res = spa_node_send_command(data->sink, cmd)) < 0)
 			printf("got sink error %d\n", res);
 	}
 
@@ -530,10 +532,12 @@ static void run_graph(struct data *data)
 	printf("stopping, elapsed %" PRIi64 "\n", stop - start);
 
 	{
-		struct spa_command cmd = SPA_COMMAND_INIT(data->type.command_node.Pause);
-		if ((res = spa_node_send_command(data->sink, &cmd)) < 0)
+		struct spa_command *cmd = (struct spa_command *)
+			&SPA_COMMAND_NODE_STATE_INIT(data->type.command_node.State,
+						    SPA_COMMAND_NODE_STATE_SUSPEND);
+		if ((res = spa_node_send_command(data->sink, cmd)) < 0)
 			printf("got error %d\n", res);
-		if ((res = spa_node_send_command(data->source, &cmd)) < 0)
+		if ((res = spa_node_send_command(data->source, cmd)) < 0)
 			printf("got source error %d\n", res);
 	}
 }

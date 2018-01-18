@@ -104,6 +104,7 @@ client_node_marshal_port_update(void *object,
 	if (info) {
 		spa_pod_builder_struct(b,
 				      "i", info->flags,
+				      "i", info->state,
 				      "i", info->rate);
 	} else {
 		spa_pod_builder_add(b, "P", NULL, NULL);
@@ -753,6 +754,7 @@ static int client_node_demarshal_port_update(void *object, void *data, size_t si
 		if (spa_pod_parser_get(&p2,
 				"["
 				"i", &info.flags,
+				"i", &info.state,
 				"i", &info.rate, NULL) < 0)
 			return -EINVAL;
 	}

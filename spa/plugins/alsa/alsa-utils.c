@@ -16,7 +16,7 @@
 
 #define CHECK(s,msg) if ((err = (s)) < 0) { spa_log_error(state->log, msg ": %s", snd_strerror(err)); return err; }
 
-static int spa_alsa_open(struct state *state)
+int spa_alsa_open(struct state *state)
 {
 	int err;
 	struct props *props = &state->props;

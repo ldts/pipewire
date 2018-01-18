@@ -830,10 +830,8 @@ pw_jack_node_add_port(struct pw_jack_node *node,
 		pd->data[0].type = t->data.MemPtr;
 		pd->data[0].maxsize = pd->node->node.server->engine_control->buffer_size;
 
-		port->port->state = PW_PORT_STATE_READY;
 		pw_port_use_buffers(port->port, pd->bufs, 1);
 		pd->have_buffers = true;
-		port->port->state = PW_PORT_STATE_PAUSED;
 	}
 	if (direction == PW_DIRECTION_INPUT) {
 		spa_graph_node_set_implementation(&port->port->rt.mix_node, &pd->mix_node);

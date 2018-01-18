@@ -75,8 +75,6 @@ struct port {
 
 	struct spa_port_info info;
 
-	bool have_format;
-
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
 
@@ -156,7 +154,7 @@ struct impl {
 	mix_scale_func_t copy_scale;
 	mix_scale_func_t add_scale;
 
-	bool started;
+	bool active;
 };
 
 #define CHECK_FREE_IN_PORT(this,d,p) ((d) == SPA_DIRECTION_INPUT && (p) < MAX_PORTS && !this->in_ports[(p)].valid)
@@ -191,10 +189,18 @@ static int impl_node_send_command(struct spa_node *node, const struct spa_comman
 
 	this = SPA_CONTAINER_OF(node, struct impl, node);
 
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
-		this->started = true;
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		this->started = false;
+	if (SPA_COMMAND_TYPE(command) == this->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
+
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			this->active = false;
+			break;
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			this->active = true;
+			break;
+		}
 	} else
 		return -ENOTSUP;
 
@@ -317,7 +323,7 @@ impl_node_remove_port(struct spa_node *node, enum spa_direction direction, uint3
 	port = GET_IN_PORT (this, port_id);
 
 	this->port_count--;
-	if (port->have_format && this->have_format) {
+	if (SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT) && this->have_format) {
 		if (--this->n_formats == 0)
 			this->have_format = false;
 	}
@@ -398,7 +404,7 @@ static int port_get_format(struct spa_node *node,
 	struct type *t = &this->type;
 	struct port *port = GET_PORT(this, direction, port_id);
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 	if (*index > 0)
 		return 0;
@@ -468,7 +474,7 @@ impl_node_port_enum_params(struct spa_node *node,
 			return res;
 	}
 	else if (id == t->param.idBuffers) {
-		if (!port->have_format)
+		if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 		if (*index > 0)
 			return 0;
@@ -484,7 +490,7 @@ impl_node_port_enum_params(struct spa_node *node,
 			":", t->param_buffers.align,   "i", 16);
 	}
 	else if (id == t->param.idMeta) {
-		if (!port->have_format)
+		if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 
 		switch (*index) {
@@ -566,6 +572,7 @@ static int clear_buffers(struct impl *this, struct port *port)
 		spa_log_info(this->log, NAME " %p: clear buffers %p", this, port);
 		port->n_buffers = 0;
 		spa_list_init(&port->queue);
+		SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 	}
 	return 0;
 }
@@ -583,8 +590,8 @@ static int port_set_format(struct spa_node *node,
 	port = GET_PORT(this, direction, port_id);
 
 	if (format == NULL) {
-		if (port->have_format) {
-			port->have_format = false;
+		if (SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT)) {
+			SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 			if (--this->n_formats == 0)
 				this->have_format = false;
 			clear_buffers(this, port);
@@ -629,9 +636,9 @@ static int port_set_format(struct spa_node *node,
 			this->have_format = true;
 			this->format = info;
 		}
-		if (!port->have_format) {
+		if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT)) {
 			this->n_formats++;
-			port->have_format = true;
+			SPA_FLAG_SET(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 			spa_log_info(this->log, NAME " %p: set format on port %d", this, port_id);
 		}
 	}
@@ -684,7 +691,7 @@ impl_node_port_use_buffers(struct spa_node *node,
 
 	port = GET_PORT(this, direction, port_id);
 
-	spa_return_val_if_fail(port->have_format, -EIO);
+	spa_return_val_if_fail(SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT), -EIO);
 
 	spa_log_info(this->log, NAME " %p: use buffers %d on port %d", this, n_buffers, port_id);
 
@@ -714,6 +721,8 @@ impl_node_port_use_buffers(struct spa_node *node,
 			*port->io = SPA_IO_BUFFERS_INIT;
 	}
 	port->n_buffers = n_buffers;
+	if (n_buffers > 0)
+		SPA_FLAG_SET(port->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 
 	return 0;
 }

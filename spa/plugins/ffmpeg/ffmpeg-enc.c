@@ -49,7 +49,6 @@ struct buffer {
 };
 
 struct port {
-	bool have_format;
 	struct spa_video_info current_format;
 	bool have_buffers;
 	struct buffer buffers[MAX_BUFFERS];
@@ -92,7 +91,7 @@ struct impl {
 	struct port in_ports[1];
 	struct port out_ports[1];
 
-	bool started;
+	bool active;
 };
 
 static int spa_ffmpeg_enc_node_enum_params(struct spa_node *node,
@@ -119,10 +118,18 @@ static int spa_ffmpeg_enc_node_send_command(struct spa_node *node, const struct 
 
 	this = SPA_CONTAINER_OF(node, struct impl, node);
 
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
-		this->started = true;
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		this->started = false;
+	if (SPA_COMMAND_TYPE(command) == this->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
+
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			this->active = false;
+			break;
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			this->active = true;
+			break;
+		}
 	} else
 		return -ENOTSUP;
 
@@ -257,7 +264,7 @@ static int port_get_format(struct spa_node *node,
 
 	port = GET_PORT(this, direction, port_id);
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	if (*index > 0)
@@ -325,7 +332,7 @@ static int port_set_format(struct spa_node *node,
 	port = GET_PORT(this, direction, port_id);
 
 	if (format == NULL) {
-		port->have_format = false;
+		SPA_FLAG_CLEAR(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 		return 0;
 	} else {
 		struct spa_video_info info = { 0 };
@@ -343,7 +350,7 @@ static int port_set_format(struct spa_node *node,
 
 		if (!(flags & SPA_NODE_PARAM_FLAG_TEST_ONLY)) {
 			port->current_format = info;
-			port->have_format = true;
+			SPA_FLAG_SET(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 		}
 	}
 	return 0;
@@ -463,7 +470,7 @@ static int spa_ffmpeg_enc_node_process_output(struct spa_node *node)
 
 	port = &this->out_ports[0];
 
-	if (!port->have_format) {
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT)) {
 		output->status = -EIO;
 		return -EIO;
 	}

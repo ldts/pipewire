@@ -30,16 +30,14 @@ extern "C" {
 #define SPA_TYPE_COMMAND__Node			SPA_TYPE_COMMAND_BASE "Node"
 #define SPA_TYPE_COMMAND_NODE_BASE		SPA_TYPE_COMMAND__Node ":"
 
-#define SPA_TYPE_COMMAND_NODE__Pause		SPA_TYPE_COMMAND_NODE_BASE "Pause"
-#define SPA_TYPE_COMMAND_NODE__Start		SPA_TYPE_COMMAND_NODE_BASE "Start"
+#define SPA_TYPE_COMMAND_NODE__State		SPA_TYPE_COMMAND_NODE_BASE "State"
 #define SPA_TYPE_COMMAND_NODE__Flush		SPA_TYPE_COMMAND_NODE_BASE "Flush"
 #define SPA_TYPE_COMMAND_NODE__Drain		SPA_TYPE_COMMAND_NODE_BASE "Drain"
 #define SPA_TYPE_COMMAND_NODE__Marker		SPA_TYPE_COMMAND_NODE_BASE "Marker"
 #define SPA_TYPE_COMMAND_NODE__ClockUpdate	SPA_TYPE_COMMAND_NODE_BASE "ClockUpdate"
 
 struct spa_type_command_node {
-	uint32_t Pause;
-	uint32_t Start;
+	uint32_t State;
 	uint32_t Flush;
 	uint32_t Drain;
 	uint32_t Marker;
@@ -49,15 +47,32 @@ struct spa_type_command_node {
 static inline void
 spa_type_command_node_map(struct spa_type_map *map, struct spa_type_command_node *type)
 {
-	if (type->Pause == 0) {
-		type->Pause = spa_type_map_get_id(map, SPA_TYPE_COMMAND_NODE__Pause);
-		type->Start = spa_type_map_get_id(map, SPA_TYPE_COMMAND_NODE__Start);
+	if (type->State == 0) {
+		type->State = spa_type_map_get_id(map, SPA_TYPE_COMMAND_NODE__State);
 		type->Flush = spa_type_map_get_id(map, SPA_TYPE_COMMAND_NODE__Flush);
 		type->Drain = spa_type_map_get_id(map, SPA_TYPE_COMMAND_NODE__Drain);
 		type->Marker = spa_type_map_get_id(map, SPA_TYPE_COMMAND_NODE__Marker);
 		type->ClockUpdate = spa_type_map_get_id(map, SPA_TYPE_COMMAND_NODE__ClockUpdate);
 	}
 }
+
+struct spa_command_node_state_body {
+	struct spa_pod_object_body body;
+#define SPA_COMMAND_NODE_STATE_SUSPEND		0
+#define SPA_COMMAND_NODE_STATE_IDLE		1
+#define SPA_COMMAND_NODE_STATE_ACTIVE		2
+	struct spa_pod_int state		SPA_ALIGNED(8);
+};
+
+struct spa_command_node_state {
+	struct spa_pod pod;
+	struct spa_command_node_state_body body;
+};
+
+#define SPA_COMMAND_NODE_STATE_INIT(type,state)					\
+	SPA_COMMAND_INIT_FULL(struct spa_command_node_state,			\
+			sizeof(struct spa_command_node_state_body), type,	\
+			SPA_POD_INT_INIT(state))
 
 /**
  * spa_command_node_clock_update:

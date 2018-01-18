@@ -707,7 +707,6 @@ static void client_node_transport(void *object, uint32_t node_id,
 static void add_port_update(struct pw_proxy *proxy, struct pw_port *port, uint32_t change_mask)
 {
 	struct node_data *data = proxy->user_data;
-	const struct spa_port_info *port_info = NULL;
 	struct spa_port_info pi;
 	uint32_t n_params = 0;
 	struct spa_pod **params = NULL;
@@ -744,9 +743,8 @@ static void add_port_update(struct pw_proxy *proxy, struct pw_port *port, uint32
                 }
 	}
 	if (change_mask & PW_CLIENT_NODE_PORT_UPDATE_INFO) {
-		spa_node_port_get_info(port->node->node, port->direction, port->port_id, &port_info);
-		pi = * port_info;
-		pi.flags &= ~SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS;
+		pi = *port->info;
+		SPA_FLAG_CLEAR(pi.flags, SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS);
 	}
 
         pw_client_node_proxy_port_update(data->node_proxy,
@@ -799,39 +797,59 @@ static void client_node_command(void *object, uint32_t seq, const struct spa_com
 	struct pw_proxy *proxy = object;
 	struct node_data *data = proxy->user_data;
 	struct pw_remote *remote = proxy->remote;
-	int res;
+	struct pw_port *port;
+	int res, i;
 
-	if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.Pause) {
-		pw_log_debug("node %p: pause %d", proxy, seq);
+	if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
 
-		pw_loop_update_io(remote->core->data_loop,
-				  data->rtsocket_source,
-				  SPA_IO_ERR | SPA_IO_HUP);
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			pw_log_debug("node %p: deactivate %d", proxy, seq);
 
-		if ((res = spa_node_send_command(data->node->node, command)) < 0)
-			pw_log_warn("node %p: pause failed", proxy);
+			pw_loop_update_io(remote->core->data_loop,
+					  data->rtsocket_source,
+					  SPA_IO_ERR | SPA_IO_HUP);
 
-		pw_client_node_proxy_done(data->node_proxy, seq, res);
-	}
-	else if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.Start) {
-		int i;
+			if ((res = spa_node_send_command(data->node->node, command)) < 0)
+				pw_log_warn("node %p: deactivate failed", proxy);
 
-		pw_log_debug("node %p: start %d", proxy, seq);
+			spa_list_for_each(port, &data->node->input_ports, link)
+				add_port_update(proxy, port, PW_CLIENT_NODE_PORT_UPDATE_INFO);
+			spa_list_for_each(port, &data->node->output_ports, link)
+				add_port_update(proxy, port, PW_CLIENT_NODE_PORT_UPDATE_INFO);
 
-		pw_loop_update_io(remote->core->data_loop,
-				  data->rtsocket_source,
-				  SPA_IO_IN | SPA_IO_ERR | SPA_IO_HUP);
+			pw_client_node_proxy_done(data->node_proxy, seq, res);
+			break;
 
-		if ((res = spa_node_send_command(data->node->node, command)) < 0)
-			pw_log_warn("node %p: start failed", proxy);
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			pw_log_debug("node %p: activate %d", proxy, seq);
 
-		/* FIXME we should call process_output on the node and see what its
-		 * status is */
-		for (i = 0; i < data->trans->area->max_input_ports; i++)
-			data->trans->inputs[i].status = SPA_STATUS_NEED_BUFFER;
-		node_need_input(data);
+			pw_loop_update_io(remote->core->data_loop,
+					  data->rtsocket_source,
+					  SPA_IO_IN | SPA_IO_ERR | SPA_IO_HUP);
 
-		pw_client_node_proxy_done(data->node_proxy, seq, res);
+			if ((res = spa_node_send_command(data->node->node, command)) < 0)
+				pw_log_warn("node %p: activate failed", proxy);
+
+			spa_list_for_each(port, &data->node->input_ports, link)
+				add_port_update(proxy, port, PW_CLIENT_NODE_PORT_UPDATE_INFO);
+			spa_list_for_each(port, &data->node->output_ports, link)
+				add_port_update(proxy, port, PW_CLIENT_NODE_PORT_UPDATE_INFO);
+
+			/* FIXME we should call process_output on the node and see what its
+			 * status is */
+			for (i = 0; i < data->trans->area->max_input_ports; i++)
+				data->trans->inputs[i].status = SPA_STATUS_NEED_BUFFER;
+			node_need_input(data);
+
+			pw_client_node_proxy_done(data->node_proxy, seq, res);
+			break;
+		default:
+			res = -ENOTSUP;
+			break;
+		}
 	}
 	else if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.ClockUpdate) {
 		struct spa_command_node_clock_update *cu = (__typeof__(cu)) command;
@@ -884,7 +902,7 @@ client_node_port_set_param(void *object,
 		goto done;
 	}
 
-	pw_port_pause(port->port);
+	pw_port_deactivate(port->port);
 
 	res = pw_port_set_param(port->port, id, flags, param);
 	if (res < 0)
@@ -947,7 +965,7 @@ client_node_port_use_buffers(void *object,
 		goto done;
 	}
 
-	pw_port_pause(port->port);
+	pw_port_deactivate(port->port);
 
 	prot = PROT_READ | (direction == SPA_DIRECTION_OUTPUT ? PROT_WRITE : 0);
 
@@ -1054,9 +1072,10 @@ client_node_port_use_buffers(void *object,
 
 	res = pw_port_use_buffers(port->port, bufs, n_buffers);
 
+	add_port_update(proxy, port->port, PW_CLIENT_NODE_PORT_UPDATE_INFO);
+
       done:
 	pw_client_node_proxy_done(data->node_proxy, seq, res);
-
 }
 
 static void

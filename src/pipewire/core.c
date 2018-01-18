@@ -658,19 +658,23 @@ int pw_core_find_format(struct pw_core *core,
 	int res;
 	uint32_t iidx = 0, oidx = 0;
 	struct pw_type *t = &core->type;
+	bool in_format, out_format;
 
-	out_state = output->state;
-	in_state = input->state;
+	out_state = output->info->state;
+	in_state = input->info->state;
 
-	pw_log_debug("core %p: finding best format %d %d", core, out_state, in_state);
+	pw_log_debug("core %p: finding best format %08x %08x", core, out_state, in_state);
+
+	out_format = SPA_FLAG_CHECK(out_state, SPA_PORT_INFO_STATE_HAS_FORMAT);
+	in_format = SPA_FLAG_CHECK(in_state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 
 	/* when a port is configured but the node is idle, we can reconfigure with a different format */
-	if (out_state > PW_PORT_STATE_CONFIGURE && output->node->info.state == PW_NODE_STATE_IDLE)
-		out_state = PW_PORT_STATE_CONFIGURE;
-	if (in_state > PW_PORT_STATE_CONFIGURE && input->node->info.state == PW_NODE_STATE_IDLE)
-		in_state = PW_PORT_STATE_CONFIGURE;
+	if (out_format && output->node->info.state == PW_NODE_STATE_IDLE)
+		out_format = false;
+	if (in_format && input->node->info.state == PW_NODE_STATE_IDLE)
+		in_format = false;
 
-	if (in_state == PW_PORT_STATE_CONFIGURE && out_state > PW_PORT_STATE_CONFIGURE) {
+	if (!in_format && out_format) {
 		/* only input needs format */
 		if ((res = spa_node_port_enum_params(output->node->node,
 						     output->direction, output->port_id,
@@ -681,7 +685,7 @@ int pw_core_find_format(struct pw_core *core,
 			asprintf(error, "error get output format: %s", spa_strerror(res));
 			goto error;
 		}
-	} else if (out_state == PW_PORT_STATE_CONFIGURE && in_state > PW_PORT_STATE_CONFIGURE) {
+	} else if (!out_format && in_format) {
 		/* only output needs format */
 		if ((res = spa_node_port_enum_params(input->node->node,
 						     input->direction, input->port_id,
@@ -692,7 +696,7 @@ int pw_core_find_format(struct pw_core *core,
 			asprintf(error, "error get input format: %s", spa_strerror(res));
 			goto error;
 		}
-	} else if (in_state == PW_PORT_STATE_CONFIGURE && out_state == PW_PORT_STATE_CONFIGURE) {
+	} else if (!in_format && !out_format) {
 		struct spa_pod_builder fb = { 0 };
 		uint8_t fbuf[4096];
 		struct spa_pod *filter;

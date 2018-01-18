@@ -133,7 +133,6 @@ struct state {
 	bool opened;
 	snd_pcm_t *hndl;
 
-	bool have_format;
 	struct spa_audio_info current_format;
 
 	snd_pcm_uframes_t buffer_frames;
@@ -179,6 +178,7 @@ spa_alsa_enum_format(struct state *state,
 
 int spa_alsa_set_format(struct state *state, struct spa_audio_info *info, uint32_t flags);
 
+int spa_alsa_open(struct state *state);
 int spa_alsa_start(struct state *state, bool xrun_recover);
 int spa_alsa_pause(struct state *state, bool xrun_recover);
 int spa_alsa_close(struct state *state);

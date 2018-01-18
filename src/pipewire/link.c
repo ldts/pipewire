@@ -75,27 +75,23 @@ static void pw_link_update_state(struct pw_link *link, enum pw_link_state state,
 	}
 }
 
-static void complete_ready(void *obj, void *data, int res, uint32_t id)
+static void complete_format(void *obj, void *data, int res, uint32_t id)
 {
 	struct pw_port *port = data;
 	if (SPA_RESULT_IS_OK(res)) {
-		port->state = PW_PORT_STATE_READY;
-		pw_log_debug("port %p: state READY", port);
+		pw_log_debug("port %p: set format", port);
 	} else {
-		port->state = PW_PORT_STATE_ERROR;
-		pw_log_warn("port %p: failed to go to READY", port);
+		pw_log_warn("port %p: failed to set format", port);
 	}
 }
 
-static void complete_paused(void *obj, void *data, int res, uint32_t id)
+static void complete_buffers(void *obj, void *data, int res, uint32_t id)
 {
 	struct pw_port *port = data;
 	if (SPA_RESULT_IS_OK(res)) {
-		port->state = PW_PORT_STATE_PAUSED;
-		pw_log_debug("port %p: state PAUSED", port);
+		pw_log_debug("port %p: configured buffers", port);
 	} else {
-		port->state = PW_PORT_STATE_ERROR;
-		pw_log_warn("port %p: failed to go to PAUSED", port);
+		pw_log_warn("port %p: failed to configure buffers", port);
 	}
 }
 
@@ -103,10 +99,8 @@ static void complete_streaming(void *obj, void *data, int res, uint32_t id)
 {
 	struct pw_port *port = data;
 	if (SPA_RESULT_IS_OK(res)) {
-		port->state = PW_PORT_STATE_STREAMING;
 		pw_log_debug("port %p: state STREAMING", port);
 	} else {
-		port->state = PW_PORT_STATE_ERROR;
 		pw_log_warn("port %p: failed to go to STREAMING", port);
 	}
 }
@@ -124,8 +118,12 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 	struct spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
 	struct pw_type *t = &this->core->type;
 	uint32_t index = 0;
+	bool in_format, out_format;
 
-	if (in_state != PW_PORT_STATE_CONFIGURE && out_state != PW_PORT_STATE_CONFIGURE)
+	in_format = SPA_FLAG_CHECK(in_state, SPA_PORT_INFO_STATE_HAS_FORMAT);
+	out_format = SPA_FLAG_CHECK(out_state, SPA_PORT_INFO_STATE_HAS_FORMAT);
+
+	if (in_format && out_format)
 		return 0;
 
 	pw_link_update_state(this, PW_LINK_STATE_NEGOTIATING, NULL);
@@ -141,7 +139,7 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 
 	spa_pod_builder_init(&b, buffer, sizeof(buffer));
 
-	if (out_state > PW_PORT_STATE_CONFIGURE && output->node->info.state == PW_NODE_STATE_IDLE) {
+	if (out_format && output->node->info.state == PW_NODE_STATE_IDLE) {
 		if ((res = spa_node_port_enum_params(output->node->node,
 						     output->direction, output->port_id,
 						     t->param.idFormat, &index,
@@ -154,7 +152,7 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 		if (spa_pod_compare(current, format) != 0) {
 			pw_log_debug("link %p: output format change, renegotiate", this);
 			pw_node_set_state(output->node, PW_NODE_STATE_SUSPENDED);
-			out_state = PW_PORT_STATE_CONFIGURE;
+			out_format = false;
 		}
 		else {
 			pw_log_debug("link %p: format was already set", this);
@@ -162,7 +160,7 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 			changed = false;
 		}
 	}
-	if (in_state > PW_PORT_STATE_CONFIGURE && input->node->info.state == PW_NODE_STATE_IDLE) {
+	if (in_format && input->node->info.state == PW_NODE_STATE_IDLE) {
 		if ((res = spa_node_port_enum_params(input->node->node,
 						     input->direction, input->port_id,
 						     t->param.idFormat, &index,
@@ -175,7 +173,7 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 		if (spa_pod_compare(current, format) != 0) {
 			pw_log_debug("link %p: input format change, renegotiate", this);
 			pw_node_set_state(input->node, PW_NODE_STATE_SUSPENDED);
-			in_state = PW_PORT_STATE_CONFIGURE;
+			in_format = false;
 		}
 		else {
 			pw_log_debug("link %p: format was already set", this);
@@ -188,7 +186,7 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 	if (pw_log_level_enabled(SPA_LOG_LEVEL_DEBUG))
 		spa_debug_pod(format, SPA_DEBUG_FLAG_FORMAT);
 
-	if (out_state == PW_PORT_STATE_CONFIGURE) {
+	if (!out_format) {
 		pw_log_debug("link %p: doing set format on output", this);
 		if ((res = pw_port_set_param(output,
 					     t->param.idFormat, SPA_NODE_PARAM_FLAG_NEAREST,
@@ -197,10 +195,10 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 			goto error;
 		}
 		if (SPA_RESULT_IS_ASYNC(res))
-			pw_work_queue_add(impl->work, output->node, res, complete_ready,
+			pw_work_queue_add(impl->work, output->node, res, complete_format,
 					  output);
 	}
-	if (in_state == PW_PORT_STATE_CONFIGURE) {
+	if (!in_format) {
 		pw_log_debug("link %p: doing set format on input", this);
 		if ((res2 = pw_port_set_param(input,
 					      t->param.idFormat, SPA_NODE_PARAM_FLAG_NEAREST,
@@ -209,7 +207,7 @@ static int do_negotiate(struct pw_link *this, uint32_t in_state, uint32_t out_st
 			goto error;
 		}
 		if (SPA_RESULT_IS_ASYNC(res2))
-			pw_work_queue_add(impl->work, input->node, res2, complete_ready, input);
+			pw_work_queue_add(impl->work, input->node, res2, complete_format, input);
 	}
 
 
@@ -479,13 +477,23 @@ static int do_allocation(struct pw_link *this, uint32_t in_state, uint32_t out_s
 {
 	struct impl *impl = SPA_CONTAINER_OF(this, struct impl, this);
 	int res;
-	const struct spa_port_info *iinfo, *oinfo;
 	uint32_t in_flags, out_flags;
 	char *error = NULL;
 	struct pw_port *input, *output;
 	struct pw_type *t = &this->core->type;
+	bool in_format, out_format;
+	bool in_buffers, out_buffers;
 
-	if (in_state != PW_PORT_STATE_READY && out_state != PW_PORT_STATE_READY)
+	in_format = SPA_FLAG_CHECK(in_state, SPA_PORT_INFO_STATE_HAS_FORMAT);
+	out_format = SPA_FLAG_CHECK(out_state, SPA_PORT_INFO_STATE_HAS_FORMAT);
+
+	if (!in_format || !out_format)
+		return 0;
+
+	in_buffers = SPA_FLAG_CHECK(in_state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
+	out_buffers = SPA_FLAG_CHECK(out_state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
+
+	if (in_buffers && out_buffers)
 		return 0;
 
 	pw_link_update_state(this, PW_LINK_STATE_ALLOCATING, NULL);
@@ -494,28 +502,23 @@ static int do_allocation(struct pw_link *this, uint32_t in_state, uint32_t out_s
 	output = this->output;
 
 	pw_log_debug("link %p: doing alloc buffers %p %p", this, output->node, input->node);
+
 	/* find out what's possible */
-	if ((res = spa_node_port_get_info(output->node->node, output->direction, output->port_id,
-					  &oinfo)) < 0) {
-		asprintf(&error, "error get output port info: %d", res);
-		goto error;
-	}
-	if ((res = spa_node_port_get_info(input->node->node, input->direction, input->port_id,
-					  &iinfo)) < 0) {
-		asprintf(&error, "error get input port info: %d", res);
-		goto error;
+	in_flags = input->info->flags;
+	out_flags = output->info->flags;
+
+	if (pw_log_level_enabled(SPA_LOG_LEVEL_DEBUG)) {
+		spa_debug_port_info(output->info);
+		spa_debug_port_info(input->info);
 	}
 
-	in_flags = iinfo->flags;
-	out_flags = oinfo->flags;
-
-	if (out_flags & SPA_PORT_INFO_FLAG_LIVE) {
+	if (SPA_FLAG_CHECK(out_flags, SPA_PORT_INFO_FLAG_LIVE)) {
 		pw_log_debug("setting link as live");
 		output->node->live = true;
 		input->node->live = true;
 	}
 
-	if (in_state == PW_PORT_STATE_READY && out_state == PW_PORT_STATE_READY) {
+	if (!in_buffers && !out_buffers) {
 		if ((out_flags & SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS) &&
 		    (in_flags & SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS)) {
 			out_flags = SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS;
@@ -537,20 +540,15 @@ static int do_allocation(struct pw_link *this, uint32_t in_state, uint32_t out_s
 			res = -EIO;
 			goto error;
 		}
-	} else if (in_state == PW_PORT_STATE_READY && out_state > PW_PORT_STATE_READY) {
-		out_flags &= ~SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS;
-		in_flags &= ~SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS;
-	} else if (out_state == PW_PORT_STATE_READY && in_state > PW_PORT_STATE_READY) {
-		in_flags &= ~SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS;
-		out_flags &= ~SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS;
+	} else if (!in_buffers && out_buffers) {
+		SPA_FLAG_CLEAR(out_flags, SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS);
+		SPA_FLAG_CLEAR(in_flags, SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS);
+	} else if (!out_buffers && in_buffers) {
+		SPA_FLAG_CLEAR(in_flags, SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS);
+		SPA_FLAG_CLEAR(out_flags, SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS);
 	} else {
 		pw_log_debug("link %p: delay allocation, state %d %d", this, in_state, out_state);
 		return 0;
-	}
-
-	if (pw_log_level_enabled(SPA_LOG_LEVEL_DEBUG)) {
-		spa_debug_port_info(oinfo);
-		spa_debug_port_info(iinfo);
 	}
 
 	if (this->buffers == NULL) {
@@ -650,7 +648,7 @@ static int do_allocation(struct pw_link *this, uint32_t in_state, uint32_t out_s
 				goto error;
 			}
 			if (SPA_RESULT_IS_ASYNC(res))
-				pw_work_queue_add(impl->work, output->node, res, complete_paused, output);
+				pw_work_queue_add(impl->work, output->node, res, complete_buffers, output);
 			output->buffer_mem = this->buffer_mem;
 			this->buffer_owner = output;
 			pw_log_debug("link %p: allocated %d buffers %p from output port", this,
@@ -663,7 +661,7 @@ static int do_allocation(struct pw_link *this, uint32_t in_state, uint32_t out_s
 				goto error;
 			}
 			if (SPA_RESULT_IS_ASYNC(res))
-				pw_work_queue_add(impl->work, input->node, res, complete_paused, input);
+				pw_work_queue_add(impl->work, input->node, res, complete_buffers, input);
 			input->buffer_mem = this->buffer_mem;
 			this->buffer_owner = input;
 			pw_log_debug("link %p: allocated %d buffers %p from input port", this,
@@ -679,7 +677,7 @@ static int do_allocation(struct pw_link *this, uint32_t in_state, uint32_t out_s
 			goto error;
 		}
 		if (SPA_RESULT_IS_ASYNC(res))
-			pw_work_queue_add(impl->work, input->node, res, complete_paused, input);
+			pw_work_queue_add(impl->work, input->node, res, complete_buffers, input);
 	} else if (out_flags & SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS) {
 		pw_log_debug("link %p: using %d buffers %p on output port", this,
 			     this->n_buffers, this->buffers);
@@ -688,9 +686,10 @@ static int do_allocation(struct pw_link *this, uint32_t in_state, uint32_t out_s
 			goto error;
 		}
 		if (SPA_RESULT_IS_ASYNC(res))
-			pw_work_queue_add(impl->work, output->node, res, complete_paused, output);
+			pw_work_queue_add(impl->work, output->node, res, complete_buffers, output);
 	} else {
 		asprintf(&error, "no common buffer alloc found");
+		res = -EIO;
 		goto error;
 	}
 
@@ -722,8 +721,14 @@ static int do_start(struct pw_link *this, uint32_t in_state, uint32_t out_state)
 	char *error = NULL;
 	int res;
 	struct pw_port *input, *output;
+	bool in_ready, out_ready;
 
-	if (in_state < PW_PORT_STATE_PAUSED || out_state < PW_PORT_STATE_PAUSED)
+	in_ready = SPA_FLAG_CHECK(in_state, SPA_PORT_INFO_STATE_HAS_FORMAT |
+					    SPA_PORT_INFO_STATE_HAS_BUFFERS);
+	out_ready = SPA_FLAG_CHECK(out_state, SPA_PORT_INFO_STATE_HAS_FORMAT |
+					    SPA_PORT_INFO_STATE_HAS_BUFFERS);
+
+	if (!in_ready || !out_ready)
 		return 0;
 
 	pw_link_update_state(this, PW_LINK_STATE_PAUSED, NULL);
@@ -734,7 +739,7 @@ static int do_start(struct pw_link *this, uint32_t in_state, uint32_t out_state)
 	pw_loop_invoke(output->node->data_loop,
 		       do_activate_link, SPA_ID_INVALID, NULL, 0, false, this);
 
-	if (in_state == PW_PORT_STATE_PAUSED) {
+	if (!SPA_FLAG_CHECK(in_state, SPA_PORT_INFO_STATE_ACTIVE)) {
 		if  ((res = pw_node_set_state(input->node, PW_NODE_STATE_RUNNING)) < 0) {
 			asprintf(&error, "error starting input node: %d", res);
 			goto error;
@@ -745,7 +750,7 @@ static int do_start(struct pw_link *this, uint32_t in_state, uint32_t out_state)
 		else
 			complete_streaming(input->node, input, res, 0);
 	}
-	if (out_state == PW_PORT_STATE_PAUSED) {
+	if (!SPA_FLAG_CHECK(out_state, SPA_PORT_INFO_STATE_ACTIVE)) {
 		if ((res = pw_node_set_state(output->node, PW_NODE_STATE_RUNNING)) < 0) {
 			asprintf(&error, "error starting output node: %d", res);
 			goto error;
@@ -782,17 +787,20 @@ static int check_states(struct pw_link *this, void *user_data, int res)
 	    output->node->info.state == PW_NODE_STATE_ERROR)
 		return -EIO;
 
-	in_state = input->state;
-	out_state = output->state;
+	in_state = input->info->state;
+	out_state = output->info->state;
 
-	pw_log_debug("link %p: input state %d, output state %d", this, in_state, out_state);
+	pw_log_debug("link %p: input state %08x, output state %08x", this, in_state, out_state);
 
+#if 0
 	if (in_state == PW_PORT_STATE_ERROR || out_state == PW_PORT_STATE_ERROR) {
 		pw_link_update_state(this, PW_LINK_STATE_ERROR, NULL);
 		return -EIO;
 	}
+#endif
 
-	if (in_state == PW_PORT_STATE_STREAMING && out_state == PW_PORT_STATE_STREAMING) {
+	if (SPA_FLAG_CHECK(in_state, SPA_PORT_INFO_STATE_ACTIVE) &&
+	    SPA_FLAG_CHECK(out_state, SPA_PORT_INFO_STATE_ACTIVE)) {
 		pw_link_update_state(this, PW_LINK_STATE_RUNNING, NULL);
 		return 0;
 	}
@@ -990,14 +998,12 @@ int pw_link_deactivate(struct pw_link *this)
 	    input_node->n_used_output_links <= input_node->idle_used_output_links &&
 	    input_node->info.state > PW_NODE_STATE_IDLE) {
 		pw_node_update_state(input_node, PW_NODE_STATE_IDLE, NULL);
-		this->input->state = PW_PORT_STATE_PAUSED;
 	}
 
 	if (output_node->n_used_input_links <= output_node->idle_used_input_links &&
 	    output_node->n_used_output_links <= output_node->idle_used_output_links &&
 	    output_node->info.state > PW_NODE_STATE_IDLE) {
 		pw_node_update_state(output_node, PW_NODE_STATE_IDLE, NULL);
-		this->output->state = PW_PORT_STATE_PAUSED;
 	}
 
 	return 0;

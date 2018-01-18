@@ -46,14 +46,19 @@ struct spa_node;
 struct spa_port_info {
 #define SPA_PORT_INFO_FLAG_REMOVABLE		(1<<0)	/**< port can be removed */
 #define SPA_PORT_INFO_FLAG_OPTIONAL		(1<<1)	/**< processing on port is optional */
-#define SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS	(1<<2)	/**< the port can allocate buffer data */
-#define SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS	(1<<3)	/**< the port can use a provided buffer */
-#define SPA_PORT_INFO_FLAG_IN_PLACE		(1<<4)	/**< the port can process data in-place and
+#define SPA_PORT_INFO_FLAG_NEED_FORMAT		(1<<2)	/**< the port needs a format */
+#define SPA_PORT_INFO_FLAG_CAN_ALLOC_BUFFERS	(1<<3)	/**< the port can allocate buffer data */
+#define SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS	(1<<4)	/**< the port can use provided buffers */
+#define SPA_PORT_INFO_FLAG_IN_PLACE		(1<<5)	/**< the port can process data in-place and
 							 *   will need a writable input buffer */
-#define SPA_PORT_INFO_FLAG_NO_REF		(1<<5)	/**< the port does not keep a ref on the buffer */
-#define SPA_PORT_INFO_FLAG_LIVE			(1<<6)	/**< output buffers from this port are
+#define SPA_PORT_INFO_FLAG_NO_REF		(1<<6)	/**< the port does not keep a ref on the buffer */
+#define SPA_PORT_INFO_FLAG_LIVE			(1<<7)	/**< output buffers from this port are
 							 *   timestamped against a live clock. */
 	uint32_t flags;				/**< port flags */
+#define SPA_PORT_INFO_STATE_HAS_FORMAT		(1<<0)	/**< port has a format */
+#define SPA_PORT_INFO_STATE_HAS_BUFFERS		(1<<1)	/**< port has buffers */
+#define SPA_PORT_INFO_STATE_ACTIVE		(1<<2)	/**< port is active */
+	uint32_t state;				/**< port state */
 	uint32_t rate;				/**< rate of sequence numbers on port */
 	const struct spa_dict *props;		/**< extra port properties */
 };

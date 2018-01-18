@@ -181,6 +181,24 @@ static Uint32 id_to_sdl_format(struct data *data, uint32_t id)
 
 static int impl_send_command(struct spa_node *node, const struct spa_command *command)
 {
+	struct data *d = SPA_CONTAINER_OF(node, struct data, impl_node);
+
+	if (SPA_COMMAND_TYPE(command) == d->t->command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
+
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			SPA_FLAG_CLEAR(d->port_info.state, SPA_PORT_INFO_STATE_ACTIVE);
+			break;
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			SPA_FLAG_SET(d->port_info.state, SPA_PORT_INFO_STATE_ACTIVE);
+			break;
+		}
+	}
+	else
+		return -ENOTSUP;
+
 	return 0;
 }
 
@@ -393,6 +411,8 @@ static int port_set_format(struct spa_node *node,
 	Uint32 sdl_format;
 	void *dest;
 
+	SPA_FLAG_CLEAR(d->port_info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
+
 	if (format == NULL)
 		return 0;
 
@@ -411,6 +431,8 @@ static int port_set_format(struct spa_node *node,
 					  d->format.size.height);
 	SDL_LockTexture(d->texture, NULL, &dest, &d->stride);
 	SDL_UnlockTexture(d->texture);
+
+	SPA_FLAG_SET(d->port_info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 
 	return 0;
 }
@@ -435,9 +457,16 @@ static int impl_port_use_buffers(struct spa_node *node, enum spa_direction direc
 {
 	struct data *d = SPA_CONTAINER_OF(node, struct data, impl_node);
 	int i;
+
 	for (i = 0; i < n_buffers; i++)
 		d->buffers[i] = buffers[i];
+
 	d->n_buffers = n_buffers;
+	if (n_buffers > 0)
+		SPA_FLAG_SET(d->port_info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
+	else
+		SPA_FLAG_CLEAR(d->port_info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
+
 	return 0;
 }
 

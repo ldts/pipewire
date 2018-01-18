@@ -34,15 +34,6 @@ struct impl {
 /** \endcond */
 
 
-static void port_update_state(struct pw_port *port, enum pw_port_state state)
-{
-	if (port->state != state) {
-		pw_log_debug("port %p: state %d -> %d", port, port->state, state);
-		port->state = state;
-		spa_hook_list_call(&port->listener_list, struct pw_port_events, state_changed, state);
-	}
-}
-
 static int schedule_tee_input(struct spa_node *data)
 {
 	struct impl *impl = SPA_CONTAINER_OF(data, struct impl, mix_node);
@@ -181,7 +172,6 @@ struct pw_port *pw_port_new(enum pw_direction direction,
 	this->direction = direction;
 	this->port_id = port_id;
 	this->properties = properties;
-	this->state = PW_PORT_STATE_INIT;
 	this->io = SPA_IO_BUFFERS_INIT;
 
         if (user_data_size > 0)
@@ -296,7 +286,8 @@ int pw_port_add(struct pw_port *port, struct pw_node *node)
 	if (port->info->props)
 		pw_port_update_properties(port, port->info->props);
 
-	pw_log_debug("port %p: add to node %p %08x", port, node, port->info->flags);
+	pw_log_debug("port %p: add to node %p %08x %08x", port, node,
+			port->info->flags, port->info->state);
 	if (port->direction == PW_DIRECTION_INPUT) {
 		spa_list_insert(&node->input_ports, &port->link);
 		pw_map_insert_at(&node->input_port_map, port_id, port);
@@ -321,9 +312,6 @@ int pw_port_add(struct pw_port *port, struct pw_node *node)
 
 	port->rt.graph = node->rt.graph;
 	pw_loop_invoke(node->data_loop, do_add_port, SPA_ID_INVALID, NULL, 0, false, port);
-
-	if (port->state <= PW_PORT_STATE_INIT)
-		port_update_state(port, PW_PORT_STATE_CONFIGURE);
 
 	spa_hook_list_call(&node->listener_list, struct pw_node_events, port_added, port);
 	return 0;
@@ -401,12 +389,12 @@ int pw_port_send_command(struct pw_port *port, bool block, const struct spa_comm
 			command, SPA_POD_SIZE(command), block, port);
 }
 
-int pw_port_pause(struct pw_port *port)
+int pw_port_deactivate(struct pw_port *port)
 {
-	if (port->state > PW_PORT_STATE_PAUSED) {
-		pw_port_send_command(port, true,
-				&SPA_COMMAND_INIT(port->node->core->type.command_node.Pause));
-		port_update_state (port, PW_PORT_STATE_PAUSED);
+	if (SPA_FLAG_CHECK(port->info->state, SPA_PORT_INFO_STATE_ACTIVE)) {
+		pw_port_send_command(port, true, (struct spa_command *)
+			&SPA_COMMAND_NODE_STATE_INIT(port->node->core->type.command_node.State,
+						     SPA_COMMAND_NODE_STATE_IDLE));
 	}
 	return 0;
 }
@@ -492,10 +480,6 @@ int pw_port_set_param(struct pw_port *port, uint32_t id, uint32_t flags,
 			port->buffers = NULL;
 			port->n_buffers = 0;
 			port->allocated = false;
-			port_update_state (port, PW_PORT_STATE_CONFIGURE);
-		}
-		else {
-			port_update_state (port, PW_PORT_STATE_READY);
 		}
 	}
 	return res;
@@ -506,13 +490,13 @@ int pw_port_use_buffers(struct pw_port *port, struct spa_buffer **buffers, uint3
 	int res;
 	struct pw_node *node = port->node;
 
-	if (n_buffers == 0 && port->state <= PW_PORT_STATE_READY)
+	if (n_buffers == 0 && !SPA_FLAG_CHECK(port->info->state, SPA_PORT_INFO_STATE_HAS_BUFFERS))
 		return 0;
 
-	if (n_buffers > 0 && port->state < PW_PORT_STATE_READY)
+	if (n_buffers > 0 && !SPA_FLAG_CHECK(port->info->state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
-	pw_port_pause(port);
+	pw_port_deactivate(port);
 
 	res = spa_node_port_use_buffers(node->node, port->direction, port->port_id, buffers, n_buffers);
 	pw_log_debug("port %p: use %d buffers: %d (%s)", port, n_buffers, res, spa_strerror(res));
@@ -525,11 +509,6 @@ int pw_port_use_buffers(struct pw_port *port, struct spa_buffer **buffers, uint3
 	port->n_buffers = n_buffers;
 	port->allocated = false;
 
-	if (n_buffers == 0)
-		port_update_state (port, PW_PORT_STATE_READY);
-	else if (!SPA_RESULT_IS_ASYNC(res))
-		port_update_state (port, PW_PORT_STATE_PAUSED);
-
 	return res;
 }
 
@@ -540,10 +519,10 @@ int pw_port_alloc_buffers(struct pw_port *port,
 	int res;
 	struct pw_node *node = port->node;
 
-	if (port->state < PW_PORT_STATE_READY)
+	if (!SPA_FLAG_CHECK(port->info->state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
-	pw_port_pause(port);
+	pw_port_deactivate(port);
 
 	res = spa_node_port_alloc_buffers(node->node, port->direction, port->port_id,
 							  params, n_params,
@@ -557,9 +536,6 @@ int pw_port_alloc_buffers(struct pw_port *port,
 	port->buffers = buffers;
 	port->n_buffers = *n_buffers;
 	port->allocated = true;
-
-	if (!SPA_RESULT_IS_ASYNC(res))
-		port_update_state (port, PW_PORT_STATE_PAUSED);
 
 	return res;
 }

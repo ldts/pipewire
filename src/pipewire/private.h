@@ -273,9 +273,7 @@ struct pw_port {
 	enum pw_direction direction;	/**< port direction */
 	uint32_t port_id;		/**< port id */
 	struct pw_properties *properties;
-	const struct spa_port_info *info;
-
-	enum pw_port_state state;	/**< state of the port */
+	const struct spa_port_info *info;	/**< info/state of the port */
 
 	struct spa_io_buffers io;	/**< io area of the port */
 
@@ -487,8 +485,8 @@ int pw_port_alloc_buffers(struct pw_port *port,
 /** Send a command to a port */
 int pw_port_send_command(struct pw_port *port, bool block, const struct spa_command *command);
 
-/** pause the port */
-int pw_port_pause(struct pw_port *port);
+/** deactivate the port */
+int pw_port_deactivate(struct pw_port *port);
 
 /** Change the state of the node */
 int pw_node_set_state(struct pw_node *node, enum pw_node_state state);

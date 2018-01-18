@@ -165,80 +165,50 @@ static int impl_node_set_param(struct spa_node *node, uint32_t id, uint32_t flag
 	return 0;
 }
 
-static int do_send_done(struct spa_loop *loop, bool async, uint32_t seq, const void *data, size_t size, void *user_data)
-{
-	struct state *this = user_data;
-
-	this->callbacks->done(this->callbacks_data, seq, *(int*)data);
-
-	return 0;
-}
-
-static int do_start(struct spa_loop *loop, bool async, uint32_t seq, const void *data, size_t size, void *user_data)
-{
-	struct state *this = user_data;
-	int res;
-
-	res = spa_alsa_start(this, false);
-
-	if (async) {
-		spa_loop_invoke(this->main_loop,
-				do_send_done,
-				seq,
-				&res,
-				sizeof(res),
-				false,
-				this);
-	}
-	return res;
-}
-
-static int do_pause(struct spa_loop *loop, bool async, uint32_t seq, const void *data, size_t size, void *user_data)
-{
-	struct state *this = user_data;
-	int res;
-
-	res = spa_alsa_pause(this, false);
-
-	if (async) {
-		spa_loop_invoke(this->main_loop,
-				do_send_done,
-				seq,
-				&res,
-				sizeof(res),
-				false,
-				this);
-	}
-	return res;
-}
-
 static int impl_node_send_command(struct spa_node *node, const struct spa_command *command)
 {
 	struct state *this;
+	int res;
 
 	spa_return_val_if_fail(node != NULL, -EINVAL);
 	spa_return_val_if_fail(command != NULL, -EINVAL);
 
 	this = SPA_CONTAINER_OF(node, struct state, node);
 
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
-		if (!this->have_format)
-			return -EIO;
-		if (this->n_buffers == 0)
-			return -EIO;
+	if (SPA_COMMAND_TYPE(command) == this->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
 
-		return spa_loop_invoke(this->data_loop, do_start, ++this->seq, NULL, 0, false, this);
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		if (!this->have_format)
-			return -EIO;
-		if (this->n_buffers == 0)
-			return -EIO;
-
-		return spa_loop_invoke(this->data_loop, do_pause, ++this->seq, NULL, 0, false, this);
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+			if ((res = spa_alsa_pause(this, false)) < 0)
+				return res;
+			if ((res = spa_alsa_close(this)) < 0)
+				return res;
+			break;
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			if ((res = spa_alsa_open(this)) < 0)
+				return res;
+			if ((res = spa_alsa_pause(this, false)) < 0)
+				return res;
+			break;
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			if ((res = spa_alsa_open(this)) < 0)
+				return res;
+			if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
+				return -EIO;
+			if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS))
+				return -EIO;
+			if ((res = spa_alsa_start(this, false)) < 0)
+				return res;
+			break;
+		default:
+			res = -ENOTSUP;
+			break;
+		}
 	} else
 		return -ENOTSUP;
 
-	return 0;
+	return res;
 }
 
 static int
@@ -345,7 +315,7 @@ static int port_get_format(struct spa_node *node,
 	struct state *this = SPA_CONTAINER_OF(node, struct state, node);
 	struct type *t = &this->type;
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 	if (*index > 0)
 		return 0;
@@ -408,7 +378,7 @@ impl_node_port_enum_params(struct spa_node *node,
 			return res;
 	}
 	else if (id == t->param.idBuffers) {
-		if (!this->have_format)
+		if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 		if (*index > 0)
 			return 0;
@@ -422,7 +392,7 @@ impl_node_port_enum_params(struct spa_node *node,
 			":", t->param_buffers.align,   "i", 16);
 	}
 	else if (id == t->param.idMeta) {
-		if (!this->have_format)
+		if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 			return -EIO;
 
 		switch (*index) {
@@ -453,6 +423,7 @@ static int clear_buffers(struct state *this)
 		spa_list_init(&this->free);
 		spa_list_init(&this->ready);
 		this->n_buffers = 0;
+		SPA_FLAG_CLEAR(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 	}
 	return 0;
 }
@@ -468,7 +439,7 @@ static int port_set_format(struct spa_node *node,
 		spa_alsa_pause(this, false);
 		clear_buffers(this);
 		spa_alsa_close(this);
-		this->have_format = false;
+		SPA_FLAG_CLEAR(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 	} else {
 		struct spa_audio_info info = { 0 };
 
@@ -487,10 +458,10 @@ static int port_set_format(struct spa_node *node,
 			return err;
 
 		this->current_format = info;
-		this->have_format = true;
+		SPA_FLAG_SET(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 	}
 
-	if (this->have_format) {
+	if (SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT)) {
 		this->info.flags = SPA_PORT_INFO_FLAG_CAN_USE_BUFFERS | SPA_PORT_INFO_FLAG_LIVE;
 		this->info.rate = this->rate;
 	}
@@ -536,7 +507,7 @@ impl_node_port_use_buffers(struct spa_node *node,
 
 	spa_return_val_if_fail(CHECK_PORT(this, direction, port_id), -EINVAL);
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	if (this->n_buffers > 0) {
@@ -562,6 +533,8 @@ impl_node_port_use_buffers(struct spa_node *node,
 		spa_list_append(&this->free, &b->link);
 	}
 	this->n_buffers = n_buffers;
+	if (n_buffers)
+		SPA_FLAG_SET(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 
 	return 0;
 }
@@ -641,23 +614,8 @@ static int
 impl_node_port_send_command(struct spa_node *node,
 			    enum spa_direction direction, uint32_t port_id, const struct spa_command *command)
 {
-	struct state *this;
-	int res;
-
 	spa_return_val_if_fail(node != NULL, -EINVAL);
-
-	this = SPA_CONTAINER_OF(node, struct state, node);
-
-	spa_return_val_if_fail(CHECK_PORT(this, direction, port_id), -EINVAL);
-
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		res = spa_alsa_pause(this, false);
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
-		res = spa_alsa_start(this, false);
-	} else
-		res = -ENOTSUP;
-
-	return res;
+	return -ENOTSUP;
 }
 
 static int impl_node_process_input(struct spa_node *node)

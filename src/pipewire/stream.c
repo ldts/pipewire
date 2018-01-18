@@ -690,41 +690,48 @@ static void client_node_command(void *data, uint32_t seq, const struct spa_comma
 	struct pw_stream *stream = &impl->this;
 	struct pw_remote *remote = stream->remote;
 
-	if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.Pause) {
+	if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
+
 		add_async_complete(stream, seq, 0);
 
-		if (stream->state == PW_STREAM_STATE_STREAMING) {
-			pw_log_debug("stream %p: pause %d", stream, seq);
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			if (stream->state == PW_STREAM_STATE_STREAMING) {
+				pw_log_debug("stream %p: deactivate %d", stream, seq);
 
-			pw_loop_update_io(stream->remote->core->data_loop,
-					  impl->rtsocket_source, SPA_IO_ERR | SPA_IO_HUP);
+				pw_loop_update_io(stream->remote->core->data_loop,
+						  impl->rtsocket_source, SPA_IO_ERR | SPA_IO_HUP);
 
-			stream_set_state(stream, PW_STREAM_STATE_PAUSED, NULL);
-		}
-	} else if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.Start) {
-		add_async_complete(stream, seq, 0);
-
-		if (stream->state == PW_STREAM_STATE_PAUSED) {
-			int i;
-
-			pw_log_debug("stream %p: start %d %d", stream, seq, impl->direction);
-
-			pw_loop_update_io(stream->remote->core->data_loop,
-					  impl->rtsocket_source,
-					  SPA_IO_IN | SPA_IO_ERR | SPA_IO_HUP);
-
-			if (impl->direction == SPA_DIRECTION_INPUT) {
-				for (i = 0; i < impl->trans->area->max_input_ports; i++)
-					impl->trans->inputs[i].status = SPA_STATUS_NEED_BUFFER;
-				send_need_input(stream);
+				stream_set_state(stream, PW_STREAM_STATE_PAUSED, NULL);
 			}
-			else {
-				impl->in_need_buffer = true;
-				spa_hook_list_call(&stream->listener_list, struct pw_stream_events,
-						    need_buffer);
-				impl->in_need_buffer = false;
+			break;
+
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			if (stream->state == PW_STREAM_STATE_PAUSED) {
+				int i;
+
+				pw_log_debug("stream %p: activate %d %d", stream, seq, impl->direction);
+
+				pw_loop_update_io(stream->remote->core->data_loop,
+						  impl->rtsocket_source,
+						  SPA_IO_IN | SPA_IO_ERR | SPA_IO_HUP);
+
+				if (impl->direction == SPA_DIRECTION_INPUT) {
+					for (i = 0; i < impl->trans->area->max_input_ports; i++)
+						impl->trans->inputs[i].status = SPA_STATUS_NEED_BUFFER;
+					send_need_input(stream);
+				}
+				else {
+					impl->in_need_buffer = true;
+					spa_hook_list_call(&stream->listener_list, struct pw_stream_events,
+							    need_buffer);
+					impl->in_need_buffer = false;
+				}
+				stream_set_state(stream, PW_STREAM_STATE_STREAMING, NULL);
 			}
-			stream_set_state(stream, PW_STREAM_STATE_STREAMING, NULL);
+			break;
 		}
 	} else if (SPA_COMMAND_TYPE(command) == remote->core->type.command_node.ClockUpdate) {
 		struct spa_command_node_clock_update *cu = (__typeof__(cu)) command;

@@ -111,13 +111,12 @@ struct impl {
 	struct spa_port_info info;
 	struct spa_io_buffers *io;
 
-	bool have_format;
 	uint8_t format_buffer[1024];
 
 	struct buffer buffers[MAX_BUFFERS];
 	uint32_t n_buffers;
 
-	bool started;
+	bool active;
 	uint64_t start_time;
 	uint64_t elapsed_time;
 
@@ -322,39 +321,42 @@ static int impl_node_send_command(struct spa_node *node, const struct spa_comman
 
 	this = SPA_CONTAINER_OF(node, struct impl, node);
 
-	if (SPA_COMMAND_TYPE(command) == this->type.command_node.Start) {
+	if (SPA_COMMAND_TYPE(command) == this->type.command_node.State) {
+                struct spa_command_node_state *s = (__typeof__(s)) command;
 		struct timespec now;
 
-		if (!this->have_format)
-			return -EIO;
+		switch(s->body.state.value) {
+		case SPA_COMMAND_NODE_STATE_SUSPEND:
+		case SPA_COMMAND_NODE_STATE_IDLE:
+			if (!this->active)
+				return 0;
+			this->active = false;
+			set_timer(this, false);
+			break;
 
-		if (this->n_buffers == 0)
-			return -EIO;
+		case SPA_COMMAND_NODE_STATE_ACTIVE:
+			if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
+				return -EIO;
+			if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS))
+				return -EIO;
+			if (this->active)
+				return 0;
 
-		if (this->started)
-			return 0;
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			if (this->props.live)
+				this->start_time = SPA_TIMESPEC_TO_TIME(&now);
+			else
+				this->start_time = 0;
+			this->buffer_count = 0;
+			this->elapsed_time = 0;
 
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		if (this->props.live)
-			this->start_time = SPA_TIMESPEC_TO_TIME(&now);
-		else
-			this->start_time = 0;
-		this->buffer_count = 0;
-		this->elapsed_time = 0;
+			this->active = true;
+			set_timer(this, true);
+			break;
 
-		this->started = true;
-		set_timer(this, true);
-	} else if (SPA_COMMAND_TYPE(command) == this->type.command_node.Pause) {
-		if (!this->have_format)
-			return -EIO;
-		if (this->n_buffers == 0)
-			return -EIO;
-
-		if (!this->started)
-			return 0;
-
-		this->started = false;
-		set_timer(this, false);
+		default:
+			return -ENOTSUP;
+		}
 	} else
 		return -ENOTSUP;
 
@@ -468,7 +470,7 @@ static int port_get_format(struct spa_node *node,
 {
 	struct impl *this = SPA_CONTAINER_OF(node, struct impl, node);
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 	if (*index > 0)
 		return 0;
@@ -566,8 +568,9 @@ static int clear_buffers(struct impl *this)
 		spa_log_info(this->log, NAME " %p: clear buffers", this);
 		this->n_buffers = 0;
 		spa_list_init(&this->empty);
-		this->started = false;
+		this->active = false;
 		set_timer(this, false);
+		SPA_FLAG_CLEAR(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
 	}
 	return 0;
 }
@@ -580,13 +583,13 @@ static int port_set_format(struct spa_node *node,
 	struct impl *this = SPA_CONTAINER_OF(node, struct impl, node);
 
 	if (format == NULL) {
-		this->have_format = false;
+		SPA_FLAG_CLEAR(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 		clear_buffers(this);
 	} else {
 		if (SPA_POD_SIZE(format) > sizeof(this->format_buffer))
 			return -ENOSPC;
 		memcpy(this->format_buffer, format, SPA_POD_SIZE(format));
-		this->have_format = true;
+		SPA_FLAG_SET(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT);
 	}
 	return 0;
 }
@@ -630,7 +633,7 @@ impl_node_port_use_buffers(struct spa_node *node,
 
 	spa_return_val_if_fail(CHECK_PORT(this, direction, port_id), -EINVAL);
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	clear_buffers(this);
@@ -653,6 +656,9 @@ impl_node_port_use_buffers(struct spa_node *node,
 		spa_list_append(&this->empty, &b->link);
 	}
 	this->n_buffers = n_buffers;
+	if (n_buffers)
+		SPA_FLAG_SET(this->info.state, SPA_PORT_INFO_STATE_HAS_BUFFERS);
+
 	this->underrun = false;
 
 	return 0;
@@ -675,7 +681,7 @@ impl_node_port_alloc_buffers(struct spa_node *node,
 
 	spa_return_val_if_fail(CHECK_PORT(this, direction, port_id), -EINVAL);
 
-	if (!this->have_format)
+	if (!SPA_FLAG_CHECK(this->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	return -ENOTSUP;

@@ -75,7 +75,6 @@ struct port {
 	bool valid;
 	struct spa_port_info info;
 
-	bool have_format;
 	uint32_t n_params;
 	struct spa_pod **params;
 	struct spa_io_buffers *io;
@@ -314,14 +313,11 @@ do_update_port(struct proxy *this,
 	       const struct spa_port_info *info)
 {
 	struct port *port;
-	struct pw_type *t = this->impl->t;
 
 	port = GET_PORT(this, direction, port_id);
 
 	if (change_mask & PW_CLIENT_NODE_PORT_UPDATE_PARAMS) {
 		int i;
-
-		port->have_format = false;
 
 		spa_log_info(this->log, "proxy %p: update %d params", this, n_params);
 		for (i = 0; i < port->n_params; i++)
@@ -329,20 +325,18 @@ do_update_port(struct proxy *this,
 		port->n_params = n_params;
 		port->params = realloc(port->params, port->n_params * sizeof(struct spa_pod *));
 
-		for (i = 0; i < port->n_params; i++) {
+		for (i = 0; i < port->n_params; i++)
 			port->params[i] = pw_spa_pod_copy(params[i]);
-
-			if (spa_pod_is_object_id(port->params[i], t->param.idFormat))
-				port->have_format = true;
-		}
 	}
 
-	if (change_mask & PW_CLIENT_NODE_PORT_UPDATE_INFO && info)
+	if (change_mask & PW_CLIENT_NODE_PORT_UPDATE_INFO && info) {
+		spa_log_info(this->log, "proxy %p: update info %08x %08x", this,
+				info->flags, info->state);
 		port->info = *info;
+	}
 
 	if (!port->valid) {
 		spa_log_info(this->log, "proxy %p: adding port %d", this, port_id);
-		port->have_format = false;
 		port->valid = true;
 
 		if (direction == SPA_DIRECTION_INPUT)
@@ -578,7 +572,7 @@ spa_proxy_node_port_use_buffers(struct spa_node *node,
 
 	port = GET_PORT(this, direction, port_id);
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	clear_buffers(this, port);
@@ -696,7 +690,7 @@ spa_proxy_node_port_alloc_buffers(struct spa_node *node,
 
 	port = GET_PORT(this, direction, port_id);
 
-	if (!port->have_format)
+	if (!SPA_FLAG_CHECK(port->info.state, SPA_PORT_INFO_STATE_HAS_FORMAT))
 		return -EIO;
 
 	return -ENOTSUP;
